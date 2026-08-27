@@ -1,5 +1,54 @@
 # Day 25 Lab Assignments — Reliability Engineering for Production Agents
 
+## Tóm tắt bài học và luồng triển khai (Tiếng Việt)
+
+### Mục tiêu buổi học
+
+Bài lab xây dựng một **reliability layer cho LLM agent gateway**. Sau bài này, người học có
+thể cô lập provider đang lỗi bằng circuit breaker, duy trì dịch vụ bằng fallback chain, giảm
+latency/chi phí bằng semantic cache, dùng Redis để chia sẻ cache giữa nhiều instance, và đánh
+giá hệ thống bằng chaos test cùng các chỉ số định lượng.
+
+### Nội dung chính
+
+1. Circuit breaker ba trạng thái: `CLOSED -> OPEN -> HALF_OPEN -> CLOSED`.
+2. Cache semantic dùng cosine similarity trên word token và character 3-gram.
+3. Guardrail không cache dữ liệu nhạy cảm và chặn false hit có năm/ID khác nhau.
+4. Routing: cache, primary provider, backup provider, rồi static fallback.
+5. Redis cache có TTL cho triển khai nhiều gateway instance.
+6. Chaos/load test đo availability, error rate, P50/P95/P99, fallback/cache rate, recovery
+   time và chi phí ước tính.
+
+### Luồng một request
+
+```text
+Request
+  -> privacy/cache check
+     -> cache HIT: trả ngay, cost = 0
+     -> cache MISS:
+        -> circuit breaker primary -> primary provider
+        -> primary lỗi/OPEN -> circuit breaker backup -> backup provider
+        -> tất cả lỗi/OPEN -> static fallback
+  -> provider thành công: ghi cache nếu query được phép cache
+  -> chaos runner thu thập route, latency, cost và transition log
+```
+
+### Các bước hoàn thành và kiểm chứng
+
+```bash
+python -m pip install -e ".[dev]"
+docker compose up -d       # cần cho 6 integration test Redis
+pytest -q
+ruff check src tests scripts
+mypy src
+python scripts/run_chaos.py --config configs/default.yaml --out reports/metrics.json
+python scripts/generate_report.py --metrics reports/metrics.json --out reports/final_report.md
+```
+
+`run_chaos.py` tạo cả `reports/metrics.json` và `reports/metrics.csv`. Báo cáo cuối cùng chứa
+sơ đồ kiến trúc, lý do chọn cấu hình, SLO, kết quả từng chaos scenario, so sánh cache bật/tắt,
+bằng chứng/giới hạn Redis và phân tích điểm yếu còn lại.
+
 Build a production-style reliability layer for an LLM agent gateway. The starter repo provides core architecture, interfaces, tests, and TODO zones — you implement all the reliability logic from scratch.
 
 ## Learning goals
